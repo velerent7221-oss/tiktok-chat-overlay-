@@ -16,10 +16,10 @@ Bu projenin temel amacı, TikTok canlı yayıncılarının sohbet akışını, s
   > ![Login Ekranı](https://i.imgur.com/FM5YMif.jpeg)
 
 * **2. Ana Kontrol Paneli:**
-  > ![Ana Ekran / Kontrol Paneli](https://imgur.com/7f80013c-b4c2-4a0e-9444-a7882b757b51)
+  > ![Ana Ekran / Kontrol Paneli](https://i.imgur.com/iIEdZJn.jpeg)
 
 * **3. WebView2 Pencereleri / Sohbet Görünümü:**
-  > ![WebView2 Pencereleri](https://imgur.com/8f3d4073-b66d-4ea0-8040-54521a9e3949)
+  > ![WebView2 Pencereleri](https://i.imgur.com/PaWASV9.jpeg)
 
 * **4. Sistem Tepsisi (Tray) Özelliği:**
   > ![Sistem Tepsisi](https://i.imgur.com/XJn0QX8.jpeg)
