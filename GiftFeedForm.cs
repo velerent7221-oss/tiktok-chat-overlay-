@@ -59,7 +59,12 @@ namespace tiktok_chat_levach
                 if (webViewGiftFeed == null || webViewGiftFeed.IsDisposed) return;
 
                 string userDataFolder = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "WebView2_Cache_GiftFeed");
-                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
+
+                // CPU yükünü minimuma indirmek için optimize edilmiş Chromium argümanları[cite: 15]
+                var options = new CoreWebView2EnvironmentOptions();
+                options.AdditionalBrowserArguments = "--disable-extensions --disable-background-networking --disable-sync --disable-component-extensions-with-background-pages";
+
+                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
 
                 await webViewGiftFeed.EnsureCoreWebView2Async(environment);
 
@@ -69,11 +74,14 @@ namespace tiktok_chat_levach
 
                 webViewGiftFeed.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
-                    await webViewGiftFeed.CoreWebView2.ExecuteScriptAsync(
-                        "document.body.style.backgroundColor = 'transparent';" +
-                        "document.documentElement.style.backgroundColor = 'transparent';" +
-                        "document.body.style.overflow = 'hidden';"
-                    );
+                    if (webViewGiftFeed?.CoreWebView2 != null)
+                    {
+                        await webViewGiftFeed.CoreWebView2.ExecuteScriptAsync(
+                            "document.body.style.backgroundColor = 'transparent';" +
+                            "document.documentElement.style.backgroundColor = 'transparent';" +
+                            "document.body.style.overflow = 'hidden';"
+                        );
+                    }
                 };
 
                 if (webViewGiftFeed.CoreWebView2 != null && !string.IsNullOrEmpty(url))
@@ -93,7 +101,7 @@ namespace tiktok_chat_levach
         {
             if (webViewGiftFeed?.CoreWebView2 != null)
             {
-                // JavaScript tarafında önceki veriyi temizleyip yeni veriyi basan örnek mantık
+                // JavaScript tarafında önceki veriyi temizleyip yeni veriyi basan örnek mantık[cite: 15]
                 string safeContent = giftHtmlContent.Replace("'", "\\'").Replace("\r", "").Replace("\n", "");
                 string script = $"if(typeof updateGiftFeed === 'function') {{ updateGiftFeed('{safeContent}'); }} " +
                                 $"else {{ document.body.innerHTML = '{safeContent}'; }}";
@@ -113,6 +121,20 @@ namespace tiktok_chat_levach
             {
                 webViewGiftFeed.ZoomFactor = config.GiftFeedZoom;
             }
+        }
+
+        // Form kapatıldığında WebView2 işlemlerini sonlandırarak arka plan CPU tüketimini engeller[cite: 15]
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try
+            {
+                if (webViewGiftFeed != null && !webViewGiftFeed.IsDisposed)
+                {
+                    webViewGiftFeed.Dispose();
+                }
+            }
+            catch { }
+            base.OnFormClosed(e);
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
@@ -59,7 +60,12 @@ namespace tiktok_chat_levach
                 if (webViewLatestFollower == null || webViewLatestFollower.IsDisposed) return;
 
                 string userDataFolder = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "WebView2_Cache_LatestFollower");
-                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
+                
+                // CPU yükünü düşürmek için optimize edilmiş Chromium argümanları
+                var options = new CoreWebView2EnvironmentOptions();
+                options.AdditionalBrowserArguments = "--disable-extensions --disable-background-networking --disable-sync --disable-component-extensions-with-background-pages";
+
+                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
 
                 await webViewLatestFollower.EnsureCoreWebView2Async(environment);
 
@@ -69,35 +75,38 @@ namespace tiktok_chat_levach
 
                 webViewLatestFollower.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
-                    await webViewLatestFollower.CoreWebView2.ExecuteScriptAsync(
-                        "document.body.style.backgroundColor = 'transparent';" +
-                        "document.documentElement.style.backgroundColor = 'transparent';" +
-                        "document.body.style.overflow = 'hidden';" +
-                        "if (!document.getElementById('customLatestFollowerLabel')) {" +
-                        "   var container = document.createElement('div');" +
-                        "   container.id = 'customLatestFollowerLabel';" +
-                        "   container.style.display = 'flex';" +
-                        "   container.style.alignItems = 'center';" +
-                        "   container.style.gap = '4px';" +
-                        "   container.style.marginBottom = '2px';" +
-                        "   " +
-                        "   var icon = document.createElement('span');" +
-                        "   icon.innerText = '👤';" +
-                        "   icon.style.fontSize = '12px';" +
-                        "   " +
-                        "   var lbl = document.createElement('span');" +
-                        "   lbl.innerText = 'SON TAKİPÇİ';" +
-                        "   lbl.style.color = '#0078d4';" + // Mavi/Tema uyumlu renk
-                        "   lbl.style.fontSize = '11px';" +
-                        "   lbl.style.fontWeight = 'bold';" +
-                        "   lbl.style.fontFamily = 'Segoe UI, sans-serif';" +
-                        "   lbl.style.textShadow = '1px 1px 2px black';" +
-                        "   " +
-                        "   container.appendChild(icon);" +
-                        "   container.appendChild(lbl);" +
-                        "   document.body.insertBefore(container, document.body.firstChild);" +
-                        "}"
-                    );
+                    if (webViewLatestFollower?.CoreWebView2 != null)
+                    {
+                        await webViewLatestFollower.CoreWebView2.ExecuteScriptAsync(
+                            "document.body.style.backgroundColor = 'transparent';" +
+                            "document.documentElement.style.backgroundColor = 'transparent';" +
+                            "document.body.style.overflow = 'hidden';" +
+                            "if (!document.getElementById('customLatestFollowerLabel')) {" +
+                            "   var container = document.createElement('div');" +
+                            "   container.id = 'customLatestFollowerLabel';" +
+                            "   container.style.display = 'flex';" +
+                            "   container.style.alignItems = 'center';" +
+                            "   container.style.gap = '4px';" +
+                            "   container.style.marginBottom = '2px';" +
+                            "   " +
+                            "   var icon = document.createElement('span');" +
+                            "   icon.innerText = '👤';" +
+                            "   icon.style.fontSize = '12px';" +
+                            "   " +
+                            "   var lbl = document.createElement('span');" +
+                            "   lbl.innerText = 'SON TAKİPÇİ';" +
+                            "   lbl.style.color = '#0078d4';" + // Mavi/Tema uyumlu renk[cite: 17]
+                            "   lbl.style.fontSize = '11px';" +
+                            "   lbl.style.fontWeight = 'bold';" +
+                            "   lbl.style.fontFamily = 'Segoe UI, sans-serif';" +
+                            "   lbl.style.textShadow = '1px 1px 2px black';" +
+                            "   " +
+                            "   container.appendChild(icon);" +
+                            "   container.appendChild(lbl);" +
+                            "   document.body.insertBefore(container, document.body.firstChild);" +
+                            "}"
+                        );
+                    }
                 };
 
                 if (webViewLatestFollower.CoreWebView2 != null && !string.IsNullOrEmpty(url))
@@ -119,6 +128,20 @@ namespace tiktok_chat_levach
             {
                 webViewLatestFollower.ZoomFactor = config.LatestFollowerZoom;
             }
+        }
+
+        // Form kapatıldığında WebView2 işlemlerini sonlandırarak arka plan CPU tüketimini engeller
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try
+            {
+                if (webViewLatestFollower != null && !webViewLatestFollower.IsDisposed)
+                {
+                    webViewLatestFollower.Dispose();
+                }
+            }
+            catch { }
+            base.OnFormClosed(e);
         }
     }
 }

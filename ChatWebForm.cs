@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
@@ -59,7 +60,12 @@ namespace tiktok_chat_levach
                 if (webViewChatWeb == null || webViewChatWeb.IsDisposed) return;
 
                 string userDataFolder = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "WebView2_Cache_ChatWeb");
-                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
+
+                // CPU Yükünü Azaltmak İçin Optimize Edilmiş Chromium Argümanları
+                var options = new CoreWebView2EnvironmentOptions();
+                options.AdditionalBrowserArguments = "--disable-extensions --disable-background-networking --disable-sync --disable-component-extensions-with-background-pages";
+
+                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
 
                 await webViewChatWeb.EnsureCoreWebView2Async(environment);
 
@@ -70,11 +76,14 @@ namespace tiktok_chat_levach
 
                 webViewChatWeb.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
-                    await webViewChatWeb.CoreWebView2.ExecuteScriptAsync(
-                        "document.body.style.backgroundColor = 'transparent';" +
-                        "document.documentElement.style.backgroundColor = 'transparent';" +
-                        "document.body.style.overflow = 'hidden';"
-                    );
+                    if (webViewChatWeb?.CoreWebView2 != null)
+                    {
+                        await webViewChatWeb.CoreWebView2.ExecuteScriptAsync(
+                            "document.body.style.backgroundColor = 'transparent';" +
+                            "document.documentElement.style.backgroundColor = 'transparent';" +
+                            "document.body.style.overflow = 'hidden';"
+                        );
+                    }
                 };
 
                 if (webViewChatWeb.CoreWebView2 != null && !string.IsNullOrEmpty(url))
@@ -98,7 +107,7 @@ namespace tiktok_chat_levach
                 webViewChatWeb.ZoomFactor = config.ChatWebZoom;
             }
 
-            // URL değiştiyse veya güncellendiyse yenidennavigate et
+            // URL değiştiyse veya güncellendiyse yeniden navigate et
             if (webViewChatWeb != null && webViewChatWeb.CoreWebView2 != null && !string.IsNullOrEmpty(config.ChatWebUrl))
             {
                 string currentSource = webViewChatWeb.Source?.OriginalString;
@@ -107,6 +116,20 @@ namespace tiktok_chat_levach
                     webViewChatWeb.CoreWebView2.Navigate(config.ChatWebUrl);
                 }
             }
+        }
+
+        // Form kapatıldığında WebView2 süreçlerini sonlandırarak arka plan CPU tüketimini engeller
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try
+            {
+                if (webViewChatWeb != null && !webViewChatWeb.IsDisposed)
+                {
+                    webViewChatWeb.Dispose();
+                }
+            }
+            catch { }
+            base.OnFormClosed(e);
         }
     }
 }

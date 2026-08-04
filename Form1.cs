@@ -65,6 +65,8 @@ namespace tiktok_chat_levach
         private bool isChatMode = false;
         private bool isIntentionalDisconnect = false;
 
+        private CoreWebView2Environment sharedWebViewEnvironment = null;
+
         private const int WS_EX_LAYERED = 0x80000;
         private const int WS_EX_TOOLWINDOW = 0x80;
         private const int WM_NCHITTEST = 0x84;
@@ -98,6 +100,8 @@ namespace tiktok_chat_levach
             base.OnResize(e);
             if (this.WindowState == FormWindowState.Minimized)
             {
+                // Simge durumuna geçtiğinde WebView görsel işlemlerini durdurarak CPU'yu rahatlat
+                SetWebViewsVisibility(false);
                 this.WindowState = FormWindowState.Normal;
                 this.Hide();
             }
@@ -107,6 +111,14 @@ namespace tiktok_chat_levach
         public Form1()
         {
             currentConfig = ConfigManager.Load();
+
+            // CPU önceliğini otomatik olarak düşürerek oyunlarda kasma yaşanmasını engeller
+            try
+            {
+                System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal;
+            }
+            catch { }
+
             InitializeComponent();
             InitializeComponentCustom();
             SetupTrayIcon();
@@ -117,6 +129,36 @@ namespace tiktok_chat_levach
                     InfoDialog infoForm = new InfoDialog(currentConfig);
                     infoForm.ShowDialog(this);
                 };
+            }
+        }
+
+        private async Task<CoreWebView2Environment> GetOrCreateWebViewEnvironmentAsync()
+        {
+            if (sharedWebViewEnvironment == null)
+            {
+                try
+                {
+                    // CPU yükünü ve kaynak tüketimini minimuma indiren optimize edilmiş Chromium argümanları
+                    string browserArgs = "--disable-extensions --disable-component-update --disable-background-networking --disable-sync --metrics-recording-only --disable-translate --disable-features=TranslateUI,MediaSessionService,CalculateNativeWinOcclusion --disable-ipc-flooding-protection --disable-hang-monitor --disable-prompt-on-repost --no-pings --enable-low-end-device-mode";
+                    var options = new CoreWebView2EnvironmentOptions(browserArgs);
+                    sharedWebViewEnvironment = await CoreWebView2Environment.CreateAsync(null, null, options);
+                }
+                catch
+                {
+                    sharedWebViewEnvironment = null;
+                }
+            }
+            return sharedWebViewEnvironment;
+        }
+
+        private void OptimizeWebViewSettings(WebView2 webView)
+        {
+            if (webView?.CoreWebView2 != null)
+            {
+                webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                webView.CoreWebView2.Settings.IsWebMessageEnabled = false;
             }
         }
 
@@ -203,6 +245,7 @@ namespace tiktok_chat_levach
             btnMinimize.FlatAppearance.BorderSize = 0;
             btnMinimize.FlatAppearance.MouseOverBackColor = Color.FromArgb(50, 50, 60);
             btnMinimize.Click += (s, e) => {
+                SetWebViewsVisibility(false);
                 this.Hide();
                 UpdateTrayMenuStates();
             };
@@ -518,7 +561,7 @@ namespace tiktok_chat_levach
 
             Label lblHelpDev = new Label()
             {
-                Text = "GELİŞTİRİCİYE YUKARDAKİ TİKTOK URL'SİNE TIKLAYARAK ULAŞABİLİRSİNİZ..",
+                Text = "GELİŞTİRİCİYE YUKARDAKİ TİKTOK URL'Sİne TIKLAYARAK ULAŞABİLİRSİNİZ..",
                 ForeColor = Color.DarkGray,
                 Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
                 Location = new Point(15, 437),
@@ -538,8 +581,117 @@ namespace tiktok_chat_levach
 
             this.Controls.Add(mainContainer);
 
+            // Viewer ve Son Takipçi için başlık enjeksiyon olayları
+            SetupWebViewLabelInjections();
+
             UpdateLoginPreview();
             UpdateTrayMenuStates();
+        }
+
+
+        // Arka plandaki WebView bileşenlerinin render yükünü tamamen kesen metot
+        private void SetWebViewsVisibility(bool isVisible)
+        {
+            if (webViewOverlay1 != null) webViewOverlay1.Visible = isVisible;
+            if (webViewViewer != null) webViewViewer.Visible = isVisible;
+            if (webViewGiftFeed != null) webViewGiftFeed.Visible = isVisible;
+            if (webViewChatWeb != null) webViewChatWeb.Visible = isVisible;
+            if (webViewLatestFollower != null) webViewLatestFollower.Visible = isVisible;
+        }
+
+        private void SetupWebViewLabelInjections()
+        {
+            webViewViewer.CoreWebView2InitializationCompleted += async (s, e) =>
+            {
+                if (webViewViewer.CoreWebView2 != null)
+                {
+                    OptimizeWebViewSettings(webViewViewer);
+                    await OptimizeWebViewAnimations(webViewViewer); // CPU animasyon tasarrufu
+                    webViewViewer.CoreWebView2.NavigationCompleted += async (sender, args) =>
+                    {
+                        await webViewViewer.CoreWebView2.ExecuteScriptAsync(
+                            "document.body.style.backgroundColor = 'transparent';" +
+                            "document.documentElement.style.backgroundColor = 'transparent';" +
+                            "document.body.style.overflow = 'hidden';" +
+                            "if (!document.getElementById('customViewerLabel')) {" +
+                            "   var container = document.createElement('div');" +
+                            "   container.id = 'customViewerLabel';" +
+                            "   container.style.display = 'flex';" +
+                            "   container.style.alignItems = 'center';" +
+                            "   container.style.gap = '4px';" +
+                            "   container.style.marginBottom = '2px';" +
+                            "   var icon = document.createElement('span');" +
+                            "   icon.innerText = '👁️';" +
+                            "   icon.style.fontSize = '12px';" +
+                            "   var lbl = document.createElement('span');" +
+                            "   lbl.innerText = 'İZLEYİCİ';" +
+                            "   lbl.style.color = '#ff4d4d';" +
+                            "   lbl.style.fontSize = '11px';" +
+                            "   lbl.style.fontWeight = 'bold';" +
+                            "   lbl.style.fontFamily = 'Segoe UI, sans-serif';" +
+                            "   lbl.style.textShadow = '1px 1px 2px black';" +
+                            "   container.appendChild(icon);" +
+                            "   container.appendChild(lbl);" +
+                            "   document.body.insertBefore(container, document.body.firstChild);" +
+                            "}"
+                        );
+                    };
+                }
+            };
+
+            webViewLatestFollower.CoreWebView2InitializationCompleted += async (s, e) =>
+            {
+                if (webViewLatestFollower.CoreWebView2 != null)
+                {
+                    OptimizeWebViewSettings(webViewLatestFollower);
+                    await OptimizeWebViewAnimations(webViewLatestFollower); // CPU animasyon tasarrufu
+                    webViewLatestFollower.CoreWebView2.NavigationCompleted += async (sender, args) =>
+                    {
+                        await webViewLatestFollower.CoreWebView2.ExecuteScriptAsync(
+                            "document.body.style.backgroundColor = 'transparent';" +
+                            "document.documentElement.style.backgroundColor = 'transparent';" +
+                            "document.body.style.overflow = 'hidden';" +
+                            "if (!document.getElementById('customLatestFollowerLabel')) {" +
+                            "   var container = document.createElement('div');" +
+                            "   container.id = 'customLatestFollowerLabel';" +
+                            "   container.style.display = 'flex';" +
+                            "   container.style.alignItems = 'center';" +
+                            "   container.style.gap = '4px';" +
+                            "   container.style.marginBottom = '2px';" +
+                            "   var icon = document.createElement('span');" +
+                            "   icon.innerText = '👤';" +
+                            "   icon.style.fontSize = '12px';" +
+                            "   var lbl = document.createElement('span');" +
+                            "   lbl.innerText = 'SON TAKİPÇİ';" +
+                            "   lbl.style.color = '#0078d4';" +
+                            "   lbl.style.fontSize = '11px';" +
+                            "   lbl.style.fontWeight = 'bold';" +
+                            "   lbl.style.fontFamily = 'Segoe UI, sans-serif';" +
+                            "   lbl.style.textShadow = '1px 1px 2px black';" +
+                            "   container.appendChild(icon);" +
+                            "   container.appendChild(lbl);" +
+                            "   document.body.insertBefore(container, document.body.firstChild);" +
+                            "}"
+                        );
+                    };
+                }
+            };
+
+            webViewOverlay1.CoreWebView2InitializationCompleted += async (s, e) => { OptimizeWebViewSettings(webViewOverlay1); await OptimizeWebViewAnimations(webViewOverlay1); };
+            webViewGiftFeed.CoreWebView2InitializationCompleted += async (s, e) => { OptimizeWebViewSettings(webViewGiftFeed); await OptimizeWebViewAnimations(webViewGiftFeed); };
+            webViewChatWeb.CoreWebView2InitializationCompleted += async (s, e) => { OptimizeWebViewSettings(webViewChatWeb); await OptimizeWebViewAnimations(webViewChatWeb); };
+        }
+
+        private async Task OptimizeWebViewAnimations(WebView2 webView)
+        {
+            if (webView?.CoreWebView2 != null)
+            {
+                await webView.CoreWebView2.ExecuteScriptAsync(
+                    "var style = document.createElement('style');" +
+                    "style.innerHTML = '* { animation-duration: 0s !important; transition-duration: 0s !important; }';" +
+                    "document.head.appendChild(style);"
+                );
+            }
         }
 
         private async void UpdateLoginPreview()
@@ -580,34 +732,51 @@ namespace tiktok_chat_levach
 
                 try
                 {
+                    var env = await GetOrCreateWebViewEnvironmentAsync();
+
                     if (hasOverlay1)
                     {
                         if (webViewOverlay1.CoreWebView2 == null)
-                            await webViewOverlay1.EnsureCoreWebView2Async(null);
+                        {
+                            if (env != null) await webViewOverlay1.EnsureCoreWebView2Async(env);
+                            else await webViewOverlay1.EnsureCoreWebView2Async(null);
+                        }
                         webViewOverlay1.CoreWebView2.Navigate(overlay1);
                     }
                     if (hasViewer)
                     {
                         if (webViewViewer.CoreWebView2 == null)
-                            await webViewViewer.EnsureCoreWebView2Async(null);
+                        {
+                            if (env != null) await webViewViewer.EnsureCoreWebView2Async(env);
+                            else await webViewViewer.EnsureCoreWebView2Async(null);
+                        }
                         webViewViewer.CoreWebView2.Navigate(viewer);
                     }
                     if (hasGiftFeed)
                     {
                         if (webViewGiftFeed.CoreWebView2 == null)
-                            await webViewGiftFeed.EnsureCoreWebView2Async(null);
+                        {
+                            if (env != null) await webViewGiftFeed.EnsureCoreWebView2Async(env);
+                            else await webViewGiftFeed.EnsureCoreWebView2Async(null);
+                        }
                         webViewGiftFeed.CoreWebView2.Navigate(giftFeed);
                     }
                     if (hasChatWeb)
                     {
                         if (webViewChatWeb.CoreWebView2 == null)
-                            await webViewChatWeb.EnsureCoreWebView2Async(null);
+                        {
+                            if (env != null) await webViewChatWeb.EnsureCoreWebView2Async(env);
+                            else await webViewChatWeb.EnsureCoreWebView2Async(null);
+                        }
                         webViewChatWeb.CoreWebView2.Navigate(chatWeb);
                     }
                     if (hasLatestFollower)
                     {
                         if (webViewLatestFollower.CoreWebView2 == null)
-                            await webViewLatestFollower.EnsureCoreWebView2Async(null);
+                        {
+                            if (env != null) await webViewLatestFollower.EnsureCoreWebView2Async(env);
+                            else await webViewLatestFollower.EnsureCoreWebView2Async(null);
+                        }
                         webViewLatestFollower.CoreWebView2.Navigate(latestFollower);
                     }
                 }
@@ -637,6 +806,7 @@ namespace tiktok_chat_levach
                 if (openMenuItem.Enabled)
                 {
                     this.Show();
+                    SetWebViewsVisibility(true); // Görünür olduğunda tekrar aktif et
                     this.Activate();
                     UpdateTrayMenuStates();
                 }
@@ -703,6 +873,7 @@ namespace tiktok_chat_levach
                 if (openMenuItem != null && openMenuItem.Enabled)
                 {
                     this.Show();
+                    SetWebViewsVisibility(true);
                     this.Activate();
                     UpdateTrayMenuStates();
                 }
@@ -717,13 +888,11 @@ namespace tiktok_chat_levach
 
             if (openMenuItem != null)
             {
-                // Form gizliyse (minimize edilmiş gibi tepsiyse) "Aç" aktif, ekrandaysa pasif.
                 openMenuItem.Enabled = isHidden;
             }
 
             if (editUrlsMenuItem != null)
             {
-                // Form gizliyse URL'leri Düzenle tıklanamasın
                 editUrlsMenuItem.Enabled = !isHidden;
             }
 
@@ -749,6 +918,7 @@ namespace tiktok_chat_levach
             if (show)
             {
                 this.Show();
+                SetWebViewsVisibility(true);
                 this.ShowInTaskbar = false;
                 if (widgetForm != null && !widgetForm.IsDisposed) widgetForm.Show();
                 if (viewerForm != null && !viewerForm.IsDisposed) viewerForm.Show();
@@ -759,6 +929,7 @@ namespace tiktok_chat_levach
             }
             else
             {
+                SetWebViewsVisibility(false);
                 this.Hide();
                 this.ShowInTaskbar = false;
                 if (widgetForm != null && !widgetForm.IsDisposed) widgetForm.Hide();
@@ -781,18 +952,16 @@ namespace tiktok_chat_levach
         {
             if (isChatMode)
             {
-                this.Size = new Size(currentConfig.FormWidth, currentConfig.FormHeight);
-                if (currentConfig.FormY != -1)
-                    this.Location = new Point(currentConfig.FormX, currentConfig.FormY);
+                this.Location = new Point(0, 0);
+
+                if (webViewOverlay1 != null) { webViewOverlay1.Location = new Point(currentConfig.WidgetX, currentConfig.WidgetY); webViewOverlay1.Size = new Size(currentConfig.WidgetWidth, currentConfig.WidgetHeight); webViewOverlay1.ZoomFactor = currentConfig.WidgetZoom; }
+                if (webViewViewer != null) { webViewViewer.Location = new Point(currentConfig.ViewerX, currentConfig.ViewerY); webViewViewer.Size = new Size(currentConfig.ViewerWidth, currentConfig.ViewerHeight); webViewViewer.ZoomFactor = currentConfig.ViewerZoom; }
+                if (webViewGiftFeed != null) { webViewGiftFeed.Location = new Point(currentConfig.GiftFeedX, currentConfig.GiftFeedY); webViewGiftFeed.Size = new Size(currentConfig.GiftFeedWidth, currentConfig.GiftFeedHeight); webViewGiftFeed.ZoomFactor = currentConfig.GiftFeedZoom; }
+                if (webViewChatWeb != null) { webViewChatWeb.Location = new Point(currentConfig.ChatWebX, currentConfig.ChatWebY); webViewChatWeb.Size = new Size(currentConfig.ChatWebWidth, currentConfig.ChatWebHeight); webViewChatWeb.ZoomFactor = currentConfig.ChatWebZoom; }
+                if (webViewLatestFollower != null) { webViewLatestFollower.Location = new Point(currentConfig.LatestFollowerX, currentConfig.LatestFollowerY); webViewLatestFollower.Size = new Size(currentConfig.LatestFollowerWidth, currentConfig.LatestFollowerHeight); webViewLatestFollower.ZoomFactor = currentConfig.LatestFollowerZoom; }
             }
 
             this.TopMost = currentConfig.TopMost;
-
-            if (widgetForm != null && !widgetForm.IsDisposed) widgetForm.UpdateConfiguration(currentConfig);
-            if (viewerForm != null && !widgetForm.IsDisposed) viewerForm.UpdateConfiguration(currentConfig);
-            if (giftFeedForm != null && !widgetForm.IsDisposed) giftFeedForm.UpdateConfiguration(currentConfig);
-            if (chatWebForm != null && !chatWebForm.IsDisposed) chatWebForm.UpdateConfiguration(currentConfig);
-            if (latestFollowerForm != null && !latestFollowerForm.IsDisposed) latestFollowerForm.UpdateConfiguration(currentConfig);
 
             if (currentConfig.UseTransparentBackground)
             {
@@ -811,6 +980,7 @@ namespace tiktok_chat_levach
                     this.BackColor = Color.FromArgb(18, 18, 20);
                 }
             }
+
             this.Opacity = currentConfig.WindowOpacity;
             if (mainContainer != null) mainContainer.BackColor = Color.Transparent;
         }
@@ -885,9 +1055,43 @@ namespace tiktok_chat_levach
 
             UpdateLoginPreview();
             this.Show();
+            SetWebViewsVisibility(true);
             try { this.RecreateHandle(); } catch { }
             isIntentionalDisconnect = false;
             UpdateTrayMenuStates();
+        }
+
+        private async void MakeWebViewsTransparent()
+        {
+            Microsoft.Web.WebView2.WinForms.WebView2[] webViews = {
+                webViewOverlay1,
+                webViewViewer,
+                webViewGiftFeed,
+                webViewChatWeb,
+                webViewLatestFollower
+            };
+
+            var env = await GetOrCreateWebViewEnvironmentAsync();
+
+            foreach (var wv in webViews)
+            {
+                if (wv != null)
+                {
+                    try
+                    {
+                        if (wv.CoreWebView2 == null)
+                        {
+                            if (env != null) await wv.EnsureCoreWebView2Async(env);
+                            else await wv.EnsureCoreWebView2Async(null);
+                        }
+                        wv.DefaultBackgroundColor = Color.Transparent;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine("WebView şeffaflık hatası: " + ex.Message);
+                    }
+                }
+            }
         }
 
         private void TransitionToChatMode()
@@ -906,49 +1110,85 @@ namespace tiktok_chat_levach
             if (settingsMenuItem != null) settingsMenuItem.Enabled = true;
 
             this.StartPosition = FormStartPosition.Manual;
+            this.Location = new Point(0, 0);
 
-            int posX = currentConfig.FormX != -1 ? currentConfig.FormX : 10;
-            int posY = currentConfig.FormY != -1 ? currentConfig.FormY : 10;
-            this.Location = new Point(posX, posY);
-
-            if (currentConfig.FormWidth > 0 && currentConfig.FormHeight > 0)
-            {
-                this.Size = new Size(currentConfig.FormWidth, currentConfig.FormHeight);
-            }
-            else
-            {
-                this.Size = new Size(420, 520);
-            }
+            int maxRight = 400;
+            int maxBottom = 600;
 
             if (!string.IsNullOrEmpty(currentConfig.TikFinityUrl))
             {
-                if (widgetForm == null || widgetForm.IsDisposed) widgetForm = new WidgetForm(currentConfig);
-                widgetForm.Show();
+                maxRight = Math.Max(maxRight, currentConfig.WidgetX + currentConfig.WidgetWidth);
+                maxBottom = Math.Max(maxBottom, currentConfig.WidgetY + currentConfig.WidgetHeight);
+            }
+            if (!string.IsNullOrEmpty(currentConfig.ViewerUrl))
+            {
+                maxRight = Math.Max(maxRight, currentConfig.ViewerX + currentConfig.ViewerWidth);
+                maxBottom = Math.Max(maxBottom, currentConfig.ViewerY + currentConfig.ViewerHeight);
+            }
+            if (!string.IsNullOrEmpty(currentConfig.GiftFeedUrl))
+            {
+                maxRight = Math.Max(maxRight, currentConfig.GiftFeedX + currentConfig.GiftFeedWidth);
+                maxBottom = Math.Max(maxBottom, currentConfig.GiftFeedY + currentConfig.GiftFeedHeight);
+            }
+            if (!string.IsNullOrEmpty(currentConfig.ChatWebUrl))
+            {
+                maxRight = Math.Max(maxRight, currentConfig.ChatWebX + currentConfig.ChatWebWidth);
+                maxBottom = Math.Max(maxBottom, currentConfig.ChatWebY + currentConfig.ChatWebHeight);
+            }
+            if (!string.IsNullOrEmpty(currentConfig.LatestFollowerUrl))
+            {
+                maxRight = Math.Max(maxRight, currentConfig.LatestFollowerX + currentConfig.LatestFollowerWidth);
+                maxBottom = Math.Max(maxBottom, currentConfig.LatestFollowerY + currentConfig.LatestFollowerHeight);
+            }
+
+            this.Size = new Size(maxRight, maxBottom);
+
+            mainContainer.AutoScroll = false;
+            mainContainer.Controls.Clear();
+            mainContainer.Dock = DockStyle.Fill;
+
+            if (!string.IsNullOrEmpty(currentConfig.TikFinityUrl))
+            {
+                webViewOverlay1.Location = new Point(currentConfig.WidgetX, currentConfig.WidgetY);
+                webViewOverlay1.Size = new Size(currentConfig.WidgetWidth, currentConfig.WidgetHeight);
+                webViewOverlay1.ZoomFactor = currentConfig.WidgetZoom;
+                mainContainer.Controls.Add(webViewOverlay1);
             }
 
             if (!string.IsNullOrEmpty(currentConfig.ViewerUrl))
             {
-                if (viewerForm == null || viewerForm.IsDisposed) viewerForm = new ViewerForm(currentConfig);
-                viewerForm.Show();
+                webViewViewer.Location = new Point(currentConfig.ViewerX, currentConfig.ViewerY);
+                webViewViewer.Size = new Size(currentConfig.ViewerWidth, currentConfig.ViewerHeight);
+                webViewViewer.ZoomFactor = currentConfig.ViewerZoom;
+                mainContainer.Controls.Add(webViewViewer);
             }
 
             if (!string.IsNullOrEmpty(currentConfig.GiftFeedUrl))
             {
-                if (giftFeedForm == null || giftFeedForm.IsDisposed) giftFeedForm = new GiftFeedForm(currentConfig);
-                giftFeedForm.Show();
+                webViewGiftFeed.Location = new Point(currentConfig.GiftFeedX, currentConfig.GiftFeedY);
+                webViewGiftFeed.Size = new Size(currentConfig.GiftFeedWidth, currentConfig.GiftFeedHeight);
+                webViewGiftFeed.ZoomFactor = currentConfig.GiftFeedZoom;
+                mainContainer.Controls.Add(webViewGiftFeed);
             }
 
             if (!string.IsNullOrEmpty(currentConfig.ChatWebUrl))
             {
-                if (chatWebForm == null || chatWebForm.IsDisposed) chatWebForm = new ChatWebForm(currentConfig);
-                chatWebForm.Show();
+                webViewChatWeb.Location = new Point(currentConfig.ChatWebX, currentConfig.ChatWebY);
+                webViewChatWeb.Size = new Size(currentConfig.ChatWebWidth, currentConfig.ChatWebHeight);
+                webViewChatWeb.ZoomFactor = currentConfig.ChatWebZoom;
+                mainContainer.Controls.Add(webViewChatWeb);
             }
 
             if (!string.IsNullOrEmpty(currentConfig.LatestFollowerUrl))
             {
-                if (latestFollowerForm == null || latestFollowerForm.IsDisposed) latestFollowerForm = new LatestFollowerForm(currentConfig);
-                latestFollowerForm.Show();
+                webViewLatestFollower.Location = new Point(currentConfig.LatestFollowerX, currentConfig.LatestFollowerY);
+                webViewLatestFollower.Size = new Size(currentConfig.LatestFollowerWidth, currentConfig.LatestFollowerHeight);
+                webViewLatestFollower.ZoomFactor = currentConfig.LatestFollowerZoom;
+                mainContainer.Controls.Add(webViewLatestFollower);
             }
+
+            MakeWebViewsTransparent();
+            SetWebViewsVisibility(true);
 
             ApplySettings();
             try { this.RecreateHandle(); } catch { }

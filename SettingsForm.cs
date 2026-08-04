@@ -23,11 +23,23 @@ namespace tiktok_chat_levach
         private TrackBar tbChatWebZoom;
         private TrackBar tbLatestFollowerZoom;
 
+        // Çakışmayı önlemek için tam namespace belirtildi
+        private System.Windows.Forms.Timer previewDebounceTimer;
+
         public SettingsForm(Form mainForm)
         {
             this.mainForm = mainForm;
             originalConfig = ConfigManager.Load();
             tempConfig = CloneConfig(originalConfig);
+
+            // Debounce Timer Tanımlaması
+            previewDebounceTimer = new System.Windows.Forms.Timer();
+            previewDebounceTimer.Interval = 100;
+            previewDebounceTimer.Tick += (s, e) =>
+            {
+                previewDebounceTimer.Stop();
+                ExecuteLivePreview();
+            };
 
             InitializeModernUI();
             ApplyLivePreview();
@@ -177,7 +189,6 @@ namespace tiktok_chat_levach
             {
                 if (MessageBox.Show("Kişisel ayarlarınız sıfırlanacak ama eklenilen URL'ler gitmeyecek. Emin misiniz?", "Dikkat", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 {
-                    // Sadece URL'leri ve kullanıcı adını koruyup diğer tüm ayarları varsayılana döndürüyoruz
                     string savedViewerUrl = tempConfig.ViewerUrl;
                     string savedTikFinityUrl = tempConfig.TikFinityUrl;
                     string savedGiftFeedUrl = tempConfig.GiftFeedUrl;
@@ -596,6 +607,19 @@ namespace tiktok_chat_levach
 
         private void ApplyLivePreview()
         {
+            if (previewDebounceTimer != null)
+            {
+                previewDebounceTimer.Stop();
+                previewDebounceTimer.Start();
+            }
+            else
+            {
+                ExecuteLivePreview();
+            }
+        }
+
+        private void ExecuteLivePreview()
+        {
             tempConfig.FormX = mainForm.Location.X;
             tempConfig.FormY = mainForm.Location.Y;
             mainForm.currentConfig = tempConfig;
@@ -604,6 +628,9 @@ namespace tiktok_chat_levach
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            previewDebounceTimer?.Stop();
+            previewDebounceTimer?.Dispose();
+
             if (!isSaved)
             {
                 mainForm.currentConfig = originalConfig;

@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
@@ -45,7 +46,7 @@ namespace tiktok_chat_levach
             this.Size = new Size(config.ViewerWidth, config.ViewerHeight);
             this.TopMost = true;
             this.ShowInTaskbar = false;
-            this.Text = "TikTok Live - İzleyici Penceresi";
+            this.Text = "TikTok Live - İzleyici Penceresi"; 
             this.Visible = config.ShowViewerCount;
 
             webViewViewer = new WebView2()
@@ -85,7 +86,12 @@ namespace tiktok_chat_levach
                 if (webViewViewer == null || webViewViewer.IsDisposed) return;
 
                 string userDataFolder = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "WebView2_Cache_Viewer");
-                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
+                
+                // CPU yükünü düşürmek için optimize edilmiş Chromium argümanları
+                var options = new CoreWebView2EnvironmentOptions();
+                options.AdditionalBrowserArguments = "--disable-extensions --disable-background-networking --disable-sync --disable-component-extensions-with-background-pages";
+
+                var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, options);
 
                 await webViewViewer.EnsureCoreWebView2Async(environment);
 
@@ -95,7 +101,7 @@ namespace tiktok_chat_levach
 
                 webViewViewer.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
-                    // Sol tarafta göz simgesi (👁️) ve yanında kırmızı "İZLEYİCİ" yazısı ekleyen script
+                    // Sol tarafta göz simgesi (👁️) ve yanında kırmızı "İZLEYİCİ" yazısı ekleyen script[cite: 16]
                     await webViewViewer.CoreWebView2.ExecuteScriptAsync(
                         "document.body.style.backgroundColor = 'transparent';" +
                         "document.documentElement.style.backgroundColor = 'transparent';" +
@@ -114,7 +120,7 @@ namespace tiktok_chat_levach
                         "   " +
                         "   var lbl = document.createElement('span');" +
                         "   lbl.innerText = 'İZLEYİCİ';" +
-                        "   lbl.style.color = '#ff4d4d';" + // Kırmızı renk
+                        "   lbl.style.color = '#ff4d4d';" + // Kırmızı renk[cite: 16]
                         "   lbl.style.fontSize = '11px';" +
                         "   lbl.style.fontWeight = 'bold';" +
                         "   lbl.style.fontFamily = 'Segoe UI, sans-serif';" +
@@ -141,7 +147,7 @@ namespace tiktok_chat_levach
             UpdateStyle(config);
             this.Location = new Point(config.ViewerX, config.ViewerY);
             this.Size = new Size(config.ViewerWidth, config.ViewerHeight);
-            this.Visible = config.ShowViewerCount;
+            this.Visible = config.ShowViewerCount; 
 
             if (webViewViewer != null)
             {
@@ -156,6 +162,20 @@ namespace tiktok_chat_levach
                     }
                 }
             }
+        }
+
+        // Form kapatıldığında WebView2 işlemlerini sonlandırarak arka plan CPU tüketimini engeller
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            try
+            {
+                if (webViewViewer != null && !webViewViewer.IsDisposed)
+                {
+                    webViewViewer.Dispose();
+                }
+            }
+            catch { }
+            base.OnFormClosed(e);
         }
     }
 }

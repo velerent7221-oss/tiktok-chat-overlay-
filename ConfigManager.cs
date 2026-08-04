@@ -6,18 +6,16 @@ namespace tiktok_chat_levach
 {
     public class AppConfig
     {
+        // Genel Varsayılan Zoom (Hata Alan Kısımların Çalışması İçin Eklendi)
+        public double ZoomFactor { get; set; } = 1.0;
 
         public string LatestFollowerUrl { get; set; } = "";
-
         public int LatestFollowerX { get; set; } = 100;
-
         public int LatestFollowerY { get; set; } = 100;
-
         public int LatestFollowerWidth { get; set; } = 300;
-
         public int LatestFollowerHeight { get; set; } = 150;
-
         public double LatestFollowerZoom { get; set; } = 1.0;
+
         // BİLGİLENDİRME EKRANI GÖSTER / GÖSTERME
         public bool HideInfoOnStartup { get; set; } = false;
 
@@ -110,7 +108,6 @@ namespace tiktok_chat_levach
         public string ChatWebFontName { get; set; } = "Segoe UI";
         public float ChatWebFontSize { get; set; } = 9.5F;
         public string BroadcasterUsername { get; set; } = "";
-
     }
 
     public static class ConfigManager
